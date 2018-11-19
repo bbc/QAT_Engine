@@ -84,6 +84,7 @@
 #include "qat_callback.h"
 #include "qat_polling.h"
 #include "qat_ciphers.h"
+#include "qat_digests.h"
 #include "qat_rsa.h"
 #include "qat_dsa.h"
 #include "qat_dh.h"
@@ -957,6 +958,7 @@ static int qat_engine_destroy(ENGINE *e)
 {
     DEBUG("---- Destroying Engine...\n\n");
     qat_free_ciphers();
+    qat_free_digests();
     qat_free_EC_methods();
     qat_free_DH_methods();
     qat_free_DSA_methods();
@@ -1065,6 +1067,18 @@ static int bind_qat(ENGINE *e, const char *id)
     if (!ENGINE_set_pkey_meths(e, qat_PRF_pkey_methods)) {
         WARN("ENGINE_set_pkey_meths failed\n");
         QATerr(QAT_F_BIND_QAT, QAT_R_ENGINE_SET_PKEY_FAILURE);
+        goto end;
+    }
+
+    /*
+     * Create static structures for digests now
+     * as this function will be called by a single thread.
+     */
+    qat_create_digests();
+
+    if (!ENGINE_set_digests(e, qat_digests)) {
+        WARN("ENGINE_set_digests failed\n");
+        QATerr(QAT_F_BIND_QAT, QAT_R_ENGINE_SET_DIGESTS_FAILURE);
         goto end;
     }
 

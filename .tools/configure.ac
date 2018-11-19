@@ -28,6 +28,11 @@ AC_ARG_ENABLE(qat_ciphers,
                              [Disable accelerated CIPHERS offload]))
 AC_SUBST(enable_qat_ciphers)
 
+AC_ARG_ENABLE(qat_digests,
+              AS_HELP_STRING([--disable-qat_digests],
+                             [Disable accelerated DIGESTS offload]))
+AC_SUBST(enable_qat_digests)
+
 
 AC_ARG_ENABLE(qat_ecdh,
               AS_HELP_STRING([--disable-qat_ecdh],
@@ -240,6 +245,15 @@ then
 else
   enable_qat_ciphers="-DOPENSSL_DISABLE_QAT_CIPHERS"
   AC_MSG_NOTICE([Not Offloading CIPHERS to Hardware])
+fi
+
+if test "x$enable_qat_digests" != "xno"
+then
+  enable_qat_digests="-DOPENSSL_ENABLE_QAT_DIGESTS"
+  AC_MSG_NOTICE([Offloading DIGESTS to Hardware])
+else
+  enable_qat_digests="-DOPENSSL_DISABLE_QAT_DIGESTS"
+  AC_MSG_NOTICE([Not Offloading DIGESTS to Hardware])
 fi
 
 if test "x$enable_qat_ecdh" != "xno"

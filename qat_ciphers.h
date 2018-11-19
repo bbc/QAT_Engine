@@ -46,24 +46,7 @@
 #ifndef QAT_CIPHERS_H
 # define QAT_CIPHERS_H
 
-# include <openssl/engine.h>
-# include <openssl/ssl.h>
-# include <openssl/crypto.h>
-# include <openssl/aes.h>
-
-# define AES_IV_LEN                 16
-# define AES_KEY_SIZE_256           32
-# define AES_KEY_SIZE_128           16
-# define QAT_BYTE_SHIFT             8
-# define HMAC_KEY_SIZE              64
-# define TLS_VIRT_HDR_SIZE          13
-# define TLS_MAX_PADDING_LENGTH     255
-
-/* QAT max supported pipelines may be different from
- * SSL max supported ones.
- */
-# define QAT_MAX_PIPELINES   SSL_MAX_PIPELINES
-
+# include "qat_op.h"
 
 /* Use these flags to mark stages in the
  * initialisation sequence for pipes.
@@ -95,11 +78,6 @@
                                       INIT_SEQ_PPL_AADCTR_SET | \
                                       INIT_SEQ_PPL_BUF_LEN_SET)
 
-# define INIT_SEQ_CLEAR_ALL_FLAGS(qctx)  ((qctx)->init_flags = 0)
-# define INIT_SEQ_SET_FLAG(qctx, f)      ((qctx)->init_flags |= (f))
-# define INIT_SEQ_CLEAR_FLAG(qctx, f)    ((qctx)->init_flags &= ~(f))
-# define INIT_SEQ_IS_FLAG_SET(qctx,f)    ((qctx)->init_flags & (f))
-
 # define TLS_HDR_SET(qctx)    ((qctx)->init_flags & INIT_SEQ_TLS_HDR_SET)
 
 # define PIPELINE_SET(qctx) \
@@ -117,15 +95,6 @@
                         (qctx)->init_flags &= ~(INIT_SEQ_PPL_INIT_COMPLETE); \
                         (qctx)->numpipes = 1; \
                     } while(0)
-
-/* These are QAT API operation parameters */
-typedef struct qat_op_params_t {
-    CpaCySymOpData op_data;
-    CpaBufferList src_sgl;
-    CpaBufferList dst_sgl;
-    CpaFlatBuffer src_fbuf[2];
-    CpaFlatBuffer dst_fbuf[2];
-} qat_op_params;
 
 typedef struct qat_chained_ctx_t {
     /* Crypto */

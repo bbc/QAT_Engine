@@ -138,12 +138,12 @@ static int qat_chained_ciphers_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg,
                                     void *ptr);
 
 #endif
-static CpaStatus qat_sym_perform_op(int inst_num,
-                                    void *pCallbackTag,
-                                    const CpaCySymOpData * pOpData,
-                                    const CpaBufferList * pSrcBuffer,
-                                    CpaBufferList * pDstBuffer,
-                                    CpaBoolean * pVerifyResult);
+CpaStatus qat_sym_perform_op(int inst_num,
+                             void *pCallbackTag,
+                             const CpaCySymOpData * pOpData,
+                             const CpaBufferList * pSrcBuffer,
+                             CpaBufferList * pDstBuffer,
+                             CpaBoolean * pVerifyResult);
 
 int qatPerformOpRetries = 0;
 
@@ -412,10 +412,10 @@ static inline int qat_pkt_threshold_table_get_threshold(int nid)
 *   the paused job is woken up when all the pipelines have been proccessed.
 *
 ******************************************************************************/
-static void qat_chained_callbackFn(void *callbackTag, CpaStatus status,
-                                   const CpaCySymOp operationType,
-                                   void *pOpData, CpaBufferList *pDstBuffer,
-                                   CpaBoolean verifyResult)
+void qat_chained_callbackFn(void *callbackTag, CpaStatus status,
+                            const CpaCySymOp operationType,
+                            void *pOpData, CpaBufferList *pDstBuffer,
+                            CpaBoolean verifyResult)
 {
     op_done_pipe_t *opdone = (op_done_pipe_t *)callbackTag;
     CpaBoolean res = CPA_FALSE;

@@ -45,13 +45,16 @@ if QAT_OPENSSL_102
                                 qat_rsa_aux.h
 
 else
- OPENSSL_VERSION_SPECIFIC_SRC = qat_ciphers.c \
+ OPENSSL_VERSION_SPECIFIC_SRC = qat_digests.c \
+																qat_ciphers.c \
                                 qat_dh.c \
                                 qat_dsa.c \
                                 qat_ec.c \
                                 qat_prf.c
 
- OPENSSL_VERSION_SPECIFIC_HDR = qat_ciphers.h \
+ OPENSSL_VERSION_SPECIFIC_HDR = qat_op.h \
+																qat_digests.h \
+																qat_ciphers.h \
                                 qat_dh.h \
                                 qat_dsa.h \
                                 qat_ec.h \
@@ -83,9 +86,9 @@ AM_CPPFLAGS = $(includes) $(include_enable_usdm) $(includes_driver) \
 AM_CFLAGS = $(cflags) $(cflags_cc_opt) $(cflags_enable_upstream_driver) \
             $(cflags_qat_contig_mem) $(cflags_enable_multi_thread) \
             $(cflags_enable_usdm) $(cflags_mux) $(enable_qat_rsa) \
-            $(enable_qat_ciphers) $(enable_qat_ecdh) $(enable_qat_ecdsa) \
-            $(enable_qat_dsa) $(enable_qat_dh) $(enable_qat_prf) \
-            $(enable_qat_small_pkt_offload) \
+            $(enable_qat_ciphers) $(enable_qat_digests) $(enable_qat_ecdh) \
+						$(enable_qat_ecdsa) $(enable_qat_dsa) $(enable_qat_dh) \
+						$(enable_qat_prf) $(enable_qat_small_pkt_offload) \
             $(enable_qat_lenstra_protection) \
             $(enable_qat_debug) $(enable_qat_warnings) \
             $(enable_qat_mem_debug) $(enable_qat_mem_warnings) \
