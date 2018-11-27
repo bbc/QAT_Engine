@@ -86,6 +86,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/sha.h>
+#include <openssl/md5.h>
 #include <openssl/async.h>
 #include <openssl/lhash.h>
 #include <string.h>
@@ -122,7 +123,7 @@ CpaStatus qat_sym_perform_op(int inst_num,
 /*
  * Set up the structures for the openssl interface
  */
-int qat_digest_nids[] = { NID_sha1, NID_sha256 };
+int qat_digest_nids[] = { NID_sha1, NID_sha224, NID_sha256, NID_sha384, NID_sha512, NID_md5 };
 
 typedef struct _digest_info {
     const int nid;
@@ -133,7 +134,11 @@ typedef struct _digest_info {
 
 static digest_info info[] = {
   {NID_sha1,   NULL, SHA_DIGEST_LENGTH,   SHA_CBLOCK},
-  {NID_sha256, NULL, SHA256_DIGEST_LENGTH, SHA256_CBLOCK}
+  {NID_sha224, NULL, SHA224_DIGEST_LENGTH, SHA256_CBLOCK},
+  {NID_sha256, NULL, SHA256_DIGEST_LENGTH, SHA256_CBLOCK},
+  {NID_sha384, NULL, SHA384_DIGEST_LENGTH, SHA256_CBLOCK},
+  {NID_sha512, NULL, SHA512_DIGEST_LENGTH, SHA512_CBLOCK},
+  {NID_md5,    NULL, MD5_DIGEST_LENGTH,    MD5_CBLOCK}
 };
 
 static const unsigned int num_cc = sizeof(info) / sizeof(digest_info);
@@ -229,10 +234,18 @@ static const CpaCySymSessionSetupData template_ssd = {
 static inline const EVP_MD *qat_digest_sw_impl(int nid)
 {
     switch (nid) {
-        case NID_sha256:
-            return EVP_sha256();
         case NID_sha1:
             return EVP_sha1();
+        case NID_sha224:
+            return EVP_sha224();
+        case NID_sha256:
+            return EVP_sha256();
+        case NID_sha384:
+            return EVP_sha384();
+        case NID_sha512:
+            return EVP_sha512();
+        case NID_md5:
+            return EVP_md5();
         default:
             WARN("Invalid nid %d\n", nid);
             return NULL;
@@ -399,11 +412,23 @@ static int qat_digest_init(EVP_MD_CTX *ctx) {
 
     /* Set the values based on the type of this digest */
     switch (EVP_MD_CTX_type(ctx)) {
+    case NID_sha1:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA1;
+      break;
+    case NID_sha224:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA224;
+      break;
     case NID_sha256:
       ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA256;
       break;
-    case NID_sha1:
-      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA1;
+    case NID_sha384:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA384;
+      break;
+    case NID_sha512:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA512;
+      break;
+    case NID_md5:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_MD5;
       break;
     default:
       WARN("Unsupported hash type: %d\n", EVP_MD_CTX_type(ctx));
