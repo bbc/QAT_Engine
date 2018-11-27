@@ -99,12 +99,12 @@
 #endif
 
 #ifndef OPENSSL_DISABLE_QAT_DIGESTS
-static int qat_sha256_init(EVP_MD_CTX *ctx);
-static int qat_sha256_cleanup(EVP_MD_CTX *ctx);
-static int qat_sha256_update(EVP_MD_CTX *ctx,
+static int qat_digest_init(EVP_MD_CTX *ctx);
+static int qat_digest_cleanup(EVP_MD_CTX *ctx);
+static int qat_digest_update(EVP_MD_CTX *ctx,
                              const void *data,
                              size_t count);
-static int qat_sha256_final(EVP_MD_CTX *ctx,
+static int qat_digest_final(EVP_MD_CTX *ctx,
                             unsigned char *md);
 #endif
 
@@ -122,14 +122,19 @@ CpaStatus qat_sym_perform_op(int inst_num,
 /*
  * Set up the structures for the openssl interface
  */
-int qat_digest_nids[] = { NID_sha256 };
+int qat_digest_nids[] = { NID_sha1, NID_sha256 };
 
 typedef struct _digest_info {
     const int nid;
     EVP_MD *digest;
+    int result_size;
+    int input_block_size;
 } digest_info;
 
-static digest_info info[] = { {NID_sha256, NULL} };
+static digest_info info[] = {
+  {NID_sha1,   NULL, SHA_DIGEST_LENGTH,   SHA_CBLOCK},
+  {NID_sha256, NULL, SHA256_DIGEST_LENGTH, SHA256_CBLOCK}
+};
 
 static const unsigned int num_cc = sizeof(info) / sizeof(digest_info);
 
@@ -226,13 +231,15 @@ static inline const EVP_MD *qat_digest_sw_impl(int nid)
     switch (nid) {
         case NID_sha256:
             return EVP_sha256();
+        case NID_sha1:
+            return EVP_sha1();
         default:
             WARN("Invalid nid %d\n", nid);
             return NULL;
     }
 }
 
-static const EVP_MD *qat_create_digest_meth(int nid)
+static const EVP_MD *qat_create_digest_meth(int nid, int result_size, int input_block_size)
 {
 #ifndef OPENSSL_DISABLE_QAT_DIGESTS
     EVP_MD *d = NULL;
@@ -243,13 +250,13 @@ static const EVP_MD *qat_create_digest_meth(int nid)
         return NULL;
     }
 
-    res &= EVP_MD_meth_set_result_size(d, SHA256_DIGEST_LENGTH);
-    res &= EVP_MD_meth_set_input_blocksize(d, SHA256_CBLOCK);
+    res &= EVP_MD_meth_set_result_size(d, result_size);
+    res &= EVP_MD_meth_set_input_blocksize(d, input_block_size);
     res &= EVP_MD_meth_set_app_datasize(d, sizeof(qat_digest_ctx));
-    res &= EVP_MD_meth_set_init(d, qat_sha256_init);
-    res &= EVP_MD_meth_set_update(d, qat_sha256_update);
-    res &= EVP_MD_meth_set_final(d, qat_sha256_final);
-    res &= EVP_MD_meth_set_cleanup(d, qat_sha256_cleanup);
+    res &= EVP_MD_meth_set_init(d, qat_digest_init);
+    res &= EVP_MD_meth_set_update(d, qat_digest_update);
+    res &= EVP_MD_meth_set_final(d, qat_digest_final);
+    res &= EVP_MD_meth_set_cleanup(d, qat_digest_cleanup);
     res &= EVP_MD_meth_set_flags(d, EVP_MD_FLAG_DIGALGID_ABSENT);
 
     if (res == 0) {
@@ -270,7 +277,7 @@ void qat_create_digests(void) {
     for (i = 0; i < num_cc; i++) {
         if (info[i].digest == NULL) {
             info[i].digest = (EVP_MD *)
-                qat_create_digest_meth(info[i].nid);
+              qat_create_digest_meth(info[i].nid, info[i].result_size, info[i].input_block_size);
         }
     }
 }
@@ -333,7 +340,7 @@ int qat_digests(ENGINE *e, const EVP_MD **digest, const int **nids, int nid)
 
 /******************************************************************************
 * function:
-*         qat_sha256_init(EVP_MD_CTX *ctx)
+*         qat_digest_init(EVP_MD_CTX *ctx)
 *
 * @param ctx    [IN]  - pointer to existing ctx
 *
@@ -345,12 +352,13 @@ int qat_digests(ENGINE *e, const EVP_MD **digest, const int **nids, int nid)
 *    context.
 *
 ******************************************************************************/
-static int qat_sha256_init(EVP_MD_CTX *ctx) {
+static int qat_digest_init(EVP_MD_CTX *ctx) {
     CpaCySymSessionSetupData *ssd = NULL;
     Cpa32U sctx_size = 0;
     CpaCySymSessionCtx sctx = NULL;
     CpaStatus sts = 0;
     qat_digest_ctx *qctx = NULL;
+    const EVP_MD *md = NULL;
 
     if (ctx == NULL) {
         WARN("ctx is NULL.\n");
@@ -363,12 +371,18 @@ static int qat_sha256_init(EVP_MD_CTX *ctx) {
         return 0;
     }
 
+    md = EVP_MD_CTX_md(ctx);
+    if (md == NULL) {
+      WARN("md is NULL.\n");
+      return 0;
+    }
+
     INIT_SEQ_CLEAR_ALL_FLAGS(qctx);
 
     memset(qctx, 0, sizeof(*qctx));
 
-    qctx->digest_size = SHA256_DIGEST_LENGTH;
-    qctx->block_size = SHA256_CBLOCK;
+    qctx->digest_size = EVP_MD_meth_get_result_size(md);
+    qctx->block_size = EVP_MD_meth_get_input_blocksize(md);
     qctx->qop = NULL;
     qctx->num_pkts = 0;
 
@@ -382,6 +396,20 @@ static int qat_sha256_init(EVP_MD_CTX *ctx) {
 
     /* Copy over the template for most of the values */
     memcpy(ssd, &template_ssd, sizeof(template_ssd));
+
+    /* Set the values based on the type of this digest */
+    switch (EVP_MD_CTX_type(ctx)) {
+    case NID_sha256:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA256;
+      break;
+    case NID_sha1:
+      ssd->hashSetupData.hashAlgorithm = CPA_CY_SYM_HASH_SHA1;
+      break;
+    default:
+      WARN("Unsupported hash type: %d\n", EVP_MD_CTX_type(ctx));
+      goto err;
+    }
+    ssd->hashSetupData.digestResultLenInBytes = qctx->digest_size;
 
     qctx->inst_num = get_next_inst_num();
     if (qctx->inst_num == QAT_INVALID_INSTANCE) {
@@ -429,7 +457,7 @@ static int qat_sha256_init(EVP_MD_CTX *ctx) {
     }
     INIT_SEQ_SET_FLAG(qctx, INIT_SEQ_QAT_SESSION_INIT);
 
-    DEBUG_PPL("[%p] qat sha256 digest ctx %p initialised\n",ctx, qctx);
+    DEBUG_PPL("[%p] qat digest ctx %p initialised\n",ctx, qctx);
     return 1;
 
  sessinit_err:
@@ -463,7 +491,7 @@ static int qat_sha256_init(EVP_MD_CTX *ctx) {
 *  hashing.
 *
 ******************************************************************************/
-static int qat_sha256_cleanup(EVP_MD_CTX *ctx) {
+static int qat_digest_cleanup(EVP_MD_CTX *ctx) {
     qat_digest_ctx *qctx = NULL;
     CpaStatus sts = 0;
     CpaCySymSessionSetupData *ssd = NULL;
@@ -622,7 +650,7 @@ int qat_create_digest_scatter_gather_list(qat_digest_ctx *qctx,
 
 /******************************************************************************
 * function:
-*    qat_perform_sha256_operation(qat_digest_ctx *qctx,
+*    qat_perform_digest_operation(qat_digest_ctx *qctx,
 *                                 const void *data,
 *                                 size_t count,
 *                                 op_done_t **done)
@@ -648,7 +676,7 @@ int qat_create_digest_scatter_gather_list(qat_digest_ctx *qctx,
 *   is sent to the card.
 *
 ******************************************************************************/
-static int qat_perform_sha256_operation(qat_digest_ctx *qctx,
+static int qat_perform_digest_operation(qat_digest_ctx *qctx,
                                         const void *data,
                                         size_t count,
                                         op_done_t **done) {
@@ -767,7 +795,7 @@ static int qat_perform_sha256_operation(qat_digest_ctx *qctx,
 
 /******************************************************************************
 * function:
-*    qat_sha256_update(EVP_MD_CTX *ctx,
+*    qat_digest_update(EVP_MD_CTX *ctx,
 *                      const void *data,
 *                      size_t count)
 *
@@ -782,7 +810,7 @@ static int qat_perform_sha256_operation(qat_digest_ctx *qctx,
 *    This function updates the hash with new data
 *
 ******************************************************************************/
-static int qat_sha256_update(EVP_MD_CTX *ctx,
+static int qat_digest_update(EVP_MD_CTX *ctx,
                              const void *data,
                              size_t count) {
     qat_digest_ctx *qctx = NULL;
@@ -802,8 +830,8 @@ static int qat_sha256_update(EVP_MD_CTX *ctx,
         goto err;
     }
 
-    if (!qat_perform_sha256_operation(qctx, data, count, &done)) {
-      WARN("qat_perform_sha256_operation failed.\n");
+    if (!qat_perform_digest_operation(qctx, data, count, &done)) {
+      WARN("qat_perform_digest_operation failed.\n");
       retval = 0;
       goto err;
     }
@@ -814,7 +842,7 @@ static int qat_sha256_update(EVP_MD_CTX *ctx,
 
 /******************************************************************************
 * function:
-*    qat_sha256_final(EVP_MD_CTX *ctx,
+*    qat_digest_final(EVP_MD_CTX *ctx,
 *                     unsigned char *md)
 *
 * @param ctx    [IN]  - pointer to existing ctx
@@ -827,7 +855,7 @@ static int qat_sha256_update(EVP_MD_CTX *ctx,
 *    This function finalises the hash and returns the digest
 *
 ******************************************************************************/
-static int qat_sha256_final(EVP_MD_CTX *ctx,
+static int qat_digest_final(EVP_MD_CTX *ctx,
                             unsigned char *md) {
 
   thread_local_variables_t *tlv = NULL;
@@ -849,8 +877,8 @@ static int qat_sha256_final(EVP_MD_CTX *ctx,
     goto err;
   }
 
-  if (!qat_perform_sha256_operation(qctx, NULL, 0, &done)) {
-    WARN("qat_perform_sha256_operation failed.\n");
+  if (!qat_perform_digest_operation(qctx, NULL, 0, &done)) {
+    WARN("qat_perform_digest_operation failed.\n");
     retval = 0;
     goto err;
   }
